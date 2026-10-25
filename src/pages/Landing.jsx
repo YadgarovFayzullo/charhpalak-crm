@@ -81,7 +81,7 @@ export default function Landing({ initialSection }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               <span className="mu" style={{ fontSize: 12 }}>Nimani ko‘rsatamiz</span>
               {HERO_OPTIONS.map((x, i) => (
-                <button key={x[0]} type="button" className={s.hero === i ? 'btn pri' : 'btn'} onClick={() => touch({ hero: i })} style={{ justifyContent: 'flex-start', minHeight: 52, textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>
+                <button key={x[0]} type="button" className={s.hero === i ? 'btn pri' : 'btn'} onClick={() => touch({ hero: i })} style={{ justifyContent: 'center', minHeight: 56, padding: '10px 14px', textAlign: 'left', flexDirection: 'column', alignItems: 'flex-start', gap: 2, whiteSpace: 'normal' }}>
                   {x[0]}<span style={{ fontSize: 12, fontWeight: 400, opacity: 0.75 }}>{x[1]}</span>
                 </button>
               ))}
