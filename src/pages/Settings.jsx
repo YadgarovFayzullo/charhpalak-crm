@@ -1,53 +1,89 @@
-import { useState } from 'react'
-import { Avatar, Check, PageTop, Toggle } from '../components/ui.jsx'
-import { PERMISSION_MATRIX, PERMISSIONS, ROLES, RULES, RULES_ON, STAFF, STAFF_ROLES } from '../data/mock.js'
+import { useEffect, useState } from 'react'
+import { Avatar, Check, LoadError, Loading, PageTop, Toggle } from '../components/ui.jsx'
+import { api, useApi } from '../api.js'
+import { useSession } from '../session.jsx'
+
+const COMMISSIONS = [
+  ['club_tariff', 'Klub oylik tarifi', ''], ['club_commission', 'Klub bronidan komissiya', ''], ['coach', 'Murabbiy darsidan', ''],
+  ['tournament', 'Turnir kirish to‘lovidan', '[belgilanmagan]'], ['sponsor', 'Homiylik paketi', '[belgilanmagan]'], ['trial', 'Klub sinov muddati', '[agar bo‘lsa]'],
+]
 
 export default function Settings() {
-  const [who, setWho] = useState(STAFF_ROLES)
-  const [matrix, setMatrix] = useState(PERMISSION_MATRIX)
-  const [rules, setRules] = useState(RULES_ON)
-  const [saved, setSaved] = useState(true)
+  const res = useApi('/api/admin/team')
+  if (!res.data) {
+    return (
+      <main className="main">
+        <PageTop sub="Kim nimaga ruxsatli va platforma qoidalari" title="Sozlamalar va rollar" />
+        {res.error ? <LoadError error={res.error} onRetry={res.reload} /> : <Loading />}
+      </main>
+    )
+  }
+  return <Form res={res} />
+}
 
-  const change = (setter) => (value) => { setter(value); setSaved(false) }
-  const cycleRole = (i) => change(setWho)(who.map((r, k) => (k === i ? (r + 1) % ROLES.length : r)))
+function Form({ res }) {
+  const { run, refresh } = useSession()
+  const saved = res.data
+  const init = () => ({
+    roles: Object.fromEntries(saved.staff.map((p) => [p.userId, p.role])),
+    matrix: saved.matrix, rules: saved.rules.map((r) => r[2]), commissions: saved.commissions,
+  })
+  const [s, setS] = useState(init)
+  const [dirty, setDirty] = useState(false)
+  const [invite, setInvite] = useState('')
+  useEffect(() => { setS(init()); setDirty(false) }, [saved]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const change = (patch) => { setS((x) => ({ ...x, ...patch })); setDirty(true) }
+  const cycleRole = (uid) => change({ roles: { ...s.roles, [uid]: (s.roles[uid] + 1) % saved.roles.length } })
   // Super admin (first column) always has every permission.
-  const togglePerm = (i, j) => j !== 0 && change(setMatrix)(matrix.map((row, a) => (a === i ? row.map((v, b) => (b === j ? 1 - v : v)) : row)))
-  const toggleRule = (i) => change(setRules)(rules.map((v, k) => (k === i ? 1 - v : v)))
+  const togglePerm = (i, j) => j !== 0 && change({ matrix: s.matrix.map((row, a) => (a === i ? row.map((v, b) => (b === j ? 1 - v : v)) : row)) })
+  const toggleRule = (i) => change({ rules: s.rules.map((v, k) => (k === i ? !v : v)) })
+
+  const save = async () => {
+    if (!dirty) return
+    const r = await run(() => api('/api/admin/team', { method: 'PUT', body: s }))
+    if (r) { res.setData(r); refresh() }
+  }
+  const sendInvite = async () => {
+    const r = await run(() => api('/api/admin/team/staff', { method: 'POST', body: { username: invite } }))
+    if (r) { res.setData(r); setInvite('') }
+  }
 
   return (
     <main className="main">
       <PageTop sub="Kim nimaga ruxsatli va platforma qoidalari" title="Sozlamalar va rollar">
-        <button type="button" className="btn pri" onClick={() => setSaved(true)}>{saved ? '✓ Saqlangan' : 'O‘zgarishlarni saqlash'}</button>
+        <button type="button" className="btn pri" onClick={save}>{dirty ? 'O‘zgarishlarni saqlash' : '✓ Saqlangan'}</button>
       </PageTop>
 
       <div className="grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))', alignItems: 'start' }}>
         <div className="box">
           <div className="bh"><b>Jamoa</b><span className="mu" style={{ fontSize: 12 }}>admin panelga Telegram orqali kiradi</span></div>
-          {STAFF.map(([i, bg, n, u], k) => (
-            <div key={u} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid #EEF1EA' }}>
-              <Avatar i={i} bg={bg} />
-              <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}><b style={{ fontSize: 14 }}>{n}</b><span className="mu" style={{ fontSize: 12 }}>{u}</span></span>
-              <button type="button" className="fc" onClick={() => cycleRole(k)}>{ROLES[who[k]]} ▾</button>
+          {saved.staff.map((p) => (
+            <div key={p.userId} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '6px 0', borderTop: '1px solid #EEF1EA' }}>
+              <Avatar i={p.i} bg={p.bg} />
+              <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}><b style={{ fontSize: 14 }}>{p.name}</b><span className="mu" style={{ fontSize: 12 }}>{p.username}</span></span>
+              <button type="button" className="fc" onClick={() => cycleRole(p.userId)}>{saved.roles[s.roles[p.userId]]} ▾</button>
             </div>
           ))}
-          <div style={{ display: 'flex', gap: 8, borderTop: '1px solid #EEF1EA', paddingTop: 12 }}>
-            <label className="fl" htmlFor="inv" style={{ flex: 1 }}>Taklif qilish<input id="inv" placeholder="@telegram_username" /></label>
-            <button type="button" className="btn" style={{ alignSelf: 'flex-end' }}>Taklif yuborish</button>
-          </div>
+          <form style={{ display: 'flex', gap: 8, borderTop: '1px solid #EEF1EA', paddingTop: 12 }} onSubmit={(e) => { e.preventDefault(); invite.trim() && sendInvite() }}>
+            <label className="fl" htmlFor="inv" style={{ flex: 1 }}>Taklif qilish<input id="inv" placeholder="@telegram_username" value={invite} onChange={(e) => setInvite(e.target.value)} /></label>
+            <button type="submit" className="btn" style={{ alignSelf: 'flex-end' }}>Taklif yuborish</button>
+          </form>
+          <span className="mu" style={{ fontSize: 12 }}>Taklif qilinadigan odam avval @charhpalak_bot ga /start yozgan bo‘lishi kerak.</span>
         </div>
 
         <div className="box">
           <div className="bh"><b>Rollar va ruxsatlar</b><span className="mu" style={{ fontSize: 12 }}>katakni bosing</span></div>
           <div className="tw" style={{ border: 0 }}>
             <table>
-              <thead><tr><th>Ruxsat</th>{ROLES.map((r) => <th key={r} style={{ textAlign: 'center' }}>{r}</th>)}</tr></thead>
+              <thead><tr><th>Ruxsat</th>{saved.roles.map((r) => <th key={r} style={{ textAlign: 'center' }}>{r}</th>)}</tr></thead>
               <tbody>
-                {PERMISSIONS.map((l, i) => (
+                {saved.permissions.map((l, i) => (
                   <tr key={l}>
                     <td style={{ fontSize: 13 }}>{l}</td>
-                    {ROLES.map((r, j) => (
+                    {saved.roles.map((r, j) => (
                       <td key={r} style={{ textAlign: 'center' }}>
-                        <Check on={Boolean(matrix[i][j])} onClick={() => togglePerm(i, j)} label={`${r}: ${l}`} style={{ display: 'inline-flex', width: 'auto', padding: 0 }} />
+                        <Check on={Boolean(s.matrix[i][j])} onClick={() => togglePerm(i, j)} label={`${r}: ${l}`} style={{ display: 'inline-flex', width: 'auto', padding: 0 }} />
                       </td>
                     ))}
                   </tr>
@@ -60,21 +96,20 @@ export default function Settings() {
         <div className="box">
           <div className="bh"><b>Komissiya va tariflar</b></div>
           <div className="grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-            <label className="fl" htmlFor="c1">Klub oylik tarifi<input id="c1" defaultValue="300 000 so‘m" onChange={() => setSaved(false)} /></label>
-            <label className="fl" htmlFor="c2">Klub bronidan komissiya<input id="c2" defaultValue="1–2%" onChange={() => setSaved(false)} /></label>
-            <label className="fl" htmlFor="c3">Murabbiy darsidan<input id="c3" defaultValue="5%" onChange={() => setSaved(false)} /></label>
-            <label className="fl" htmlFor="c4">Turnir kirish to‘lovidan<input id="c4" placeholder="[belgilanmagan]" onChange={() => setSaved(false)} /></label>
-            <label className="fl" htmlFor="c5">Homiylik paketi<input id="c5" placeholder="[belgilanmagan]" onChange={() => setSaved(false)} /></label>
-            <label className="fl" htmlFor="c6">Klub sinov muddati<input id="c6" placeholder="[agar bo‘lsa]" onChange={() => setSaved(false)} /></label>
+            {COMMISSIONS.map(([k, label, ph]) => (
+              <label key={k} className="fl" htmlFor={k}>{label}
+                <input id={k} placeholder={ph} value={s.commissions[k] || ''} onChange={(e) => change({ commissions: { ...s.commissions, [k]: e.target.value } })} />
+              </label>
+            ))}
           </div>
         </div>
 
         <div className="box">
           <div className="bh"><b>Arizalar va to‘lov qoidalari</b></div>
-          {RULES.map(([l, h], i) => (
+          {saved.rules.map(([l, h], i) => (
             <div key={l} style={{ display: 'flex', gap: 10, alignItems: 'center', padding: '4px 0' }}>
               <span style={{ flex: 1, display: 'flex', flexDirection: 'column' }}><b style={{ fontSize: 14 }}>{l}</b><span className="mu" style={{ fontSize: 12 }}>{h}</span></span>
-              <Toggle on={Boolean(rules[i])} label={l} onClick={() => toggleRule(i)} />
+              <Toggle on={s.rules[i]} label={l} onClick={() => toggleRule(i)} />
             </div>
           ))}
         </div>

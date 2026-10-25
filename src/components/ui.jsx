@@ -85,11 +85,24 @@ export function Modal({ label, children }) {
   )
 }
 
-export function Toast({ children, onClose }) {
+export function Toast({ children, onClose, icon = '✓' }) {
   return (
-    <div className="toast" role="status">
-      <span style={{ color: '#C8F25A' }}>✓</span>{children}
+    <div className="toast" role="status" style={icon === '!' ? { position: 'static' } : undefined}>
+      <span style={{ color: icon === '!' ? '#FFB86B' : '#C8F25A' }}>{icon}</span>{children}
       <button type="button" className="btn sm" onClick={onClose} style={{ background: 'transparent', color: '#EEF3EA', borderColor: '#2C4C39' }}>Yopish</button>
+    </div>
+  )
+}
+
+export function Loading() {
+  return <div className="box" style={{ alignItems: 'center', color: '#5A6B5E' }}>Yuklanmoqda…</div>
+}
+
+export function LoadError({ error, onRetry }) {
+  return (
+    <div className="box" style={{ alignItems: 'center', color: '#8A2A2A' }}>
+      {error?.message || 'Xatolik'}
+      {onRetry && <button type="button" className="btn sm" onClick={onRetry}>Qayta urinish</button>}
     </div>
   )
 }
